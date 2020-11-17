@@ -42,4 +42,11 @@ Project Organization
 
 How to setup?
 ------
+```
+conda env create -f env.local.yml
+```
 
+If you install any dependencies, prefer using `conda install`, finally export new environment yml using
+```
+conda env export --no-builds > env.local.yml
+```
