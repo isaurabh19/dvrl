@@ -7,14 +7,15 @@ from torch.utils.data import TensorDataset, DataLoader
 
 
 class DVRLPredictionModel(pl.LightningModule):
-    def __init__(self, hparams, prediction_model: torch.nn.Module):
+    def __init__(self, hparams, prediction_model: torch.nn.Module, encoder_model: nn.Module = nn.Identity):
         super().__init__()
         self.hparams = hparams
         self.prediction_model = prediction_model
+        self.encoder_model = encoder_model
 
     def forward(self, x_in):
         # inference should just call forward pass on the model
-        return self.prediction_model(x_in)
+        return self.prediction_model(self.encoder_model(x_in))
 
     def configure_optimizers(self):
         return Adam(self.parameters(), lr=self.hparams.predictor_lr)
@@ -27,7 +28,7 @@ class DVRLPredictionModel(pl.LightningModule):
         optimizer = self.optimizers()
 
         for inner_iteration in range(self.hparams.num_inner_iterations):
-            # should ideally pick a random sample of size dataloader batch size, Todo
+            # should ideally pick a random sample of size dataloader batch size, TODO
             x_pred_in, y_pred_in, s_pred_in = next(iter(dataloader))
 
             optimizer.zero_grad()

@@ -1,12 +1,15 @@
 import pytorch_lightning as pl
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
+
 from dvrl.training.models import RLDataValueEstimator, DVRLPredictionModel
 
 
 class DVRL(pl.LightningModule):
-    def __init__(self, hparams, prediction_model: DVRLPredictionModel, val_dataloader, val_split):
+    def __init__(self, hparams, prediction_model: DVRLPredictionModel, val_dataloader, val_split,
+                 encoder_model: nn.Module = nn.Identity):
         """
         Implements the DVRL framework.
         :param hparams: this should be a dict, NameSpace or OmegaConf object that implements hyperparameter-storage
@@ -26,6 +29,7 @@ class DVRL(pl.LightningModule):
                                         dve_num_layers=self.hparams.dve_comb_dim,
                                         dve_comb_dim=self.hparams.dve_comb_dim)
         self.prediction_model = prediction_model
+        self.encoder_model = encoder_model
         self.val_dataloader = val_dataloader
         self.baseline_delta = 0.0
         self.val_split = val_split
@@ -35,22 +39,19 @@ class DVRL(pl.LightningModule):
 
     ### Skipping dataloaders here since they will be different for each task
 
-    def forward(self, data):
+    def forward(self, x, y):
         """
-
-        :param data: both x and y i.e features and labels
+        Calls the data value estimator after encoding it with the encoder
+        :param x: features
+        :param y: labels
         :return: value of given data
         """
-        x, y = data
         # inference should just call forward pass on the model
-        return self.dve(x, y)
+        return self.dve(self.encoder_model(x), y)
 
     def training_step(self, batch, batch_idx):
         x, y = batch
-
-        # Generate selection probability
-        estimated_dv = self.dve(x, y)
-
+        estimated_dv = self(x, y)
         selection_vector = torch.bernoulli(estimated_dv)
 
         if torch.sum(selection_vector) == 0:
