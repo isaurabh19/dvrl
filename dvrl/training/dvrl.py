@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 import torch
-
+import torch.nn.functional as F
+from torch.optim import Adam
 from dvrl.training.models import RLDataValueEstimator, DVRLPredictionModel
 
 
@@ -26,9 +27,10 @@ class DVRL(pl.LightningModule):
                                         dve_comb_dim=self.hparams.dve_comb_dim)
         self.prediction_model = prediction_model
         self.val_dataloader = val_dataloader
+        self.baseline_delta = 0.0
 
     def configure_optimizers(self):
-        return [], []
+        return Adam(self.dve.parameters(), lr=self.hparams.dve_lr)
 
     ### Skipping dataloaders here since they will be different for each task
 
@@ -56,3 +58,12 @@ class DVRL(pl.LightningModule):
             selection_vector = torch.bernoulli(estimated_dv)
 
         self.prediction_model.dvrl_fit(x, y, selection_vector)
+        log_prob = torch.sum(
+            selection_vector * torch.log(estimated_dv + self.hparams.epsilon) + (1 - selection_vector) * torch.log(
+                estimated_dv + self.hparams.epsilon))
+        mean_cross_entropy_loss = torch.mean(F.cross_entropy(self.prediction_model(x), y))
+        baseline = mean_cross_entropy_loss - self.baseline_delta
+        dve_loss = self.hparams.dve_lr * baseline * log_prob
+        self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
+                              mean_cross_entropy_loss / self.hparams.T
+        return dve_loss
