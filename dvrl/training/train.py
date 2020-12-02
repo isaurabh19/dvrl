@@ -14,12 +14,12 @@ val_dataloader = datamodule.val_dataloader()
 test_dataloader = datamodule.test_dataloader()
 
 hp_params = {}  # Create HP params dict
-pred_arch = None  # some torch nn module.
-pred_model = DVRLPredictionModel(hp_params, pred_arch)
+pred_model = DVRLPredictionModel(hp_params)
 # this will be replaced with an actual model - turns out there is no pretrained
 # CIFAR model
 encoder_model = torch.nn.Identity
 
 dvrl_model = DVRL(hp_params, pred_model, val_dataloader, datamodule.val_split, encoder_model=encoder_model)
+pred_model = DVRLPredictionModel(hp_params)
 trainer = Trainer()
 trainer.fit(dvrl_model, train_dataloader)
