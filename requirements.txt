@@ -45,6 +45,7 @@ pyparsing==2.4.7
 python-dateutil==2.8.1
 python-dotenv==0.15.0
 pytorch-lightning==1.0.7
+pytorch-lightning-bolts==0.2.5
 pytz==2020.4
 PyYAML==5.3.1
 requests==2.25.0
