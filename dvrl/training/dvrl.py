@@ -6,7 +6,7 @@ from dvrl.training.models import RLDataValueEstimator, DVRLPredictionModel
 
 
 class DVRL(pl.LightningModule):
-    def __init__(self, hparams, prediction_model: DVRLPredictionModel, val_dataloader):
+    def __init__(self, hparams, prediction_model: DVRLPredictionModel, val_dataloader, val_split):
         """
         Implements the DVRL framework.
         :param hparams: this should be a dict, NameSpace or OmegaConf object that implements hyperparameter-storage
@@ -28,6 +28,7 @@ class DVRL(pl.LightningModule):
         self.prediction_model = prediction_model
         self.val_dataloader = val_dataloader
         self.baseline_delta = 0.0
+        self.val_split = val_split
 
     def configure_optimizers(self):
         return Adam(self.dve.parameters(), lr=self.hparams.dve_lr)
@@ -58,12 +59,17 @@ class DVRL(pl.LightningModule):
             selection_vector = torch.bernoulli(estimated_dv)
 
         self.prediction_model.dvrl_fit(x, y, selection_vector)
+
         log_prob = torch.sum(
             selection_vector * torch.log(estimated_dv + self.hparams.epsilon) + (1 - selection_vector) * torch.log(
                 estimated_dv + self.hparams.epsilon))
-        mean_cross_entropy_loss = torch.mean(F.cross_entropy(self.prediction_model(x), y))
-        baseline = mean_cross_entropy_loss - self.baseline_delta
-        dve_loss = self.hparams.dve_lr * baseline * log_prob
+        cross_entropy_loss_sum = 0.0
+        for val_batch in self.val_dataloader:
+            x_val, y_val = val_batch
+            cross_entropy_loss_sum += F.cross_entropy(self.prediction_model(x_val), y_val, reduction='sum')
+        # x_val, y_val = next(self.val_dataloader)  # TODO for loop over all batches
+        mean_cross_entropy_loss = cross_entropy_loss_sum / self.val_split
+        dve_loss = (mean_cross_entropy_loss - self.baseline_delta) * log_prob
         self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
                               mean_cross_entropy_loss / self.hparams.T
         return dve_loss

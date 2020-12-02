@@ -14,6 +14,6 @@ test_dataloader = datamodule.test_dataloader()
 hp_params = {}  # Create HP params dict
 pred_arch = None  # some torch nn module.
 pred_model = DVRLPredictionModel(hp_params, pred_arch)
-dvrl_model = DVRL(hp_params, pred_model, val_dataloader)
+dvrl_model = DVRL(hp_params, pred_model, val_dataloader, datamodule.val_split)
 trainer = Trainer()
 trainer.fit(dvrl_model, train_dataloader)
