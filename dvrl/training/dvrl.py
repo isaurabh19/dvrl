@@ -5,7 +5,7 @@ from dvrl.training.models import RLDataValueEstimator, DVRLPredictionModel
 
 
 class DVRL(pl.LightningModule):
-    def __init__(self, hparams, prediction_model: DVRLPredictionModel):
+    def __init__(self, hparams, prediction_model: DVRLPredictionModel, val_dataloader):
         """
         Implements the DVRL framework.
         :param hparams: this should be a dict, NameSpace or OmegaConf object that implements hyperparameter-storage
@@ -25,15 +25,22 @@ class DVRL(pl.LightningModule):
                                         dve_num_layers=self.hparams.dve_comb_dim,
                                         dve_comb_dim=self.hparams.dve_comb_dim)
         self.prediction_model = prediction_model
+        self.val_dataloader = val_dataloader
 
     def configure_optimizers(self):
         return [], []
 
     ### Skipping dataloaders here since they will be different for each task
 
-    def forward(self, x):
+    def forward(self, data):
+        """
+
+        :param data: both x and y i.e features and labels
+        :return: value of given data
+        """
+        x, y = data
         # inference should just call forward pass on the model
-        return self.prediction_model(x)
+        return self.dve(x, y)
 
     def training_step(self, batch, batch_idx):
         x, y = batch
