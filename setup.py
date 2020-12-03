@@ -1,9 +1,9 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='dvrl',
-    version='',
-    packages=['dvrl', 'dvrl.data', 'dvrl.utils', 'dvrl.training', 'dvrl.validation', 'dvrl.visualization'],
+    version='0.1.0',
+    packages=find_packages(),
     url='',
     license='',
     author='chintanshah',

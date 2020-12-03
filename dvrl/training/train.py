@@ -1,7 +1,7 @@
 from pytorch_lightning import Trainer
 
 from dvrl.data.make_dataset import CIFAR10DataModuleWithImageNetPreprocessing
-from dvrl.training.dvrl import DVRL
+from dvrl.training.dvrl_modules import DVRL
 from dvrl.training.models import DVRLPredictionModel
 
 
