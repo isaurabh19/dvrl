@@ -68,7 +68,7 @@ class DVRL(pl.LightningModule):
         for val_batch in self.val_dataloader:
             x_val, y_val = val_batch
             cross_entropy_loss_sum += F.cross_entropy(self.prediction_model(x_val), y_val, reduction='sum')
-        # x_val, y_val = next(self.val_dataloader)  # TODO for loop over all batches
+        # x_val, y_val = next(self.val_dataloader)  # TODO Review: for loop over all batches
         mean_cross_entropy_loss = cross_entropy_loss_sum / self.val_split
         dve_loss = (mean_cross_entropy_loss - self.baseline_delta) * log_prob
         self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
