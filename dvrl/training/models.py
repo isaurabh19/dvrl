@@ -4,20 +4,23 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.data import TensorDataset, DataLoader
+from torchvision import models
 
 
 class DVRLPredictionModel(pl.LightningModule):
     def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
-        self.input_layer = nn.Linear(self.hparams.pred_input_dim, self.hparams.pred_hidden_dim)
         self.hidden_layers = [nn.Linear(self.hparams.pred_hidden_dim, self.hparams.pred_hidden_dim) for _ in
-                              range(self.hparams.pred_num_layers - 2)]
+                              range(self.hparams.pred_num_layers - 1)]
         self.output_layer = nn.Linear(self.hparams.pred_hidden_dim, self.hparams.num_classes)
         self.activation_fn = self.hparams.activation_fn
+        self.encoder_model = models.resnet18(pretrained=True)
+        self.input_layer = nn.Linear(1000, self.hparams.pred_hidden_dim)
 
     def forward(self, x_in):
         # inference should just call forward pass on the model
+        x_in = self.encoder_model(x_in)
         x_in = self.activation_fn(self.input_layer(x_in))
         for layer in self.hidden_layers:
             x_in = self.activation_fn(layer(x_in))
@@ -49,10 +52,11 @@ class DVRLPredictionModel(pl.LightningModule):
 
 
 class RLDataValueEstimator(nn.Module):
-    def __init__(self, dve_input_dim: int, dve_hidden_dim: int, dve_num_layers: int, dve_comb_dim: int,
+    def __init__(self, dve_hidden_dim: int, dve_num_layers: int, dve_comb_dim: int,
                  activation_fn=F.relu):
         super().__init__()
-        self.input_layer = nn.Linear(dve_input_dim, dve_hidden_dim)
+        self.encoder_model = models.resnet18(pretrained=True)
+        self.input_layer = nn.Linear(1000, dve_hidden_dim)
         self.hidden_layers = [nn.Linear(dve_hidden_dim, dve_hidden_dim) for _ in range(dve_num_layers - 3)]
         self.comb_layer = nn.Linear(dve_hidden_dim, dve_comb_dim)
         self.output_layer = nn.Linear(dve_comb_dim, 1)
@@ -60,6 +64,7 @@ class RLDataValueEstimator(nn.Module):
 
     def forward(self, x_input, y_input):
         # concat x, y as in https://github.com/google-research/google-research/blob/master/dvrl/dvrl.py#L192
+        x_input = self.encoder_model(x_input)
         model_inputs = torch.cat([x_input, y_input], dim=1)
 
         # affine transform input dim to hidden dim

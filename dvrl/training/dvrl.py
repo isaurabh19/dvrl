@@ -1,6 +1,5 @@
 import pytorch_lightning as pl
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
 
@@ -8,8 +7,7 @@ from dvrl.training.models import RLDataValueEstimator, DVRLPredictionModel
 
 
 class DVRL(pl.LightningModule):
-    def __init__(self, hparams, prediction_model: DVRLPredictionModel, val_dataloader, val_split,
-                 encoder_model: nn.Module = nn.Identity):
+    def __init__(self, hparams, prediction_model: DVRLPredictionModel, val_dataloader, val_split):
         """
         Implements the DVRL framework.
         :param hparams: this should be a dict, NameSpace or OmegaConf object that implements hyperparameter-storage
@@ -24,20 +22,16 @@ class DVRL(pl.LightningModule):
         # https://pytorch-lightning.readthedocs.io/en/latest/hyperparameters.html#lightningmodule-hyperparameters
 
         self.hparams = hparams
-        self.dve = RLDataValueEstimator(dve_input_dim=self.hparams.dve_input_dim,
-                                        dve_hidden_dim=self.hparams.dve_hidden_dim,
+        self.dve = RLDataValueEstimator(dve_hidden_dim=self.hparams.dve_hidden_dim,
                                         dve_num_layers=self.hparams.dve_comb_dim,
                                         dve_comb_dim=self.hparams.dve_comb_dim)
         self.prediction_model = prediction_model
-        self.encoder_model = encoder_model
         self.val_dataloader = val_dataloader
         self.baseline_delta = 0.0
         self.val_split = val_split
 
     def configure_optimizers(self):
         return Adam(self.dve.parameters(), lr=self.hparams.dve_lr)
-
-    ### Skipping dataloaders here since they will be different for each task
 
     def forward(self, x, y):
         """
@@ -47,7 +41,7 @@ class DVRL(pl.LightningModule):
         :return: value of given data
         """
         # inference should just call forward pass on the model
-        return self.dve(self.encoder_model(x), y)
+        return self.dve(x, y)
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -64,11 +58,12 @@ class DVRL(pl.LightningModule):
         log_prob = torch.sum(
             selection_vector * torch.log(estimated_dv + self.hparams.epsilon) + (1 - selection_vector) * torch.log(
                 estimated_dv + self.hparams.epsilon))
+
         cross_entropy_loss_sum = 0.0
         for val_batch in self.val_dataloader:
             x_val, y_val = val_batch
             cross_entropy_loss_sum += F.cross_entropy(self.prediction_model(x_val), y_val, reduction='sum')
-        # x_val, y_val = next(self.val_dataloader)  # TODO Review: for loop over all batches
+
         mean_cross_entropy_loss = cross_entropy_loss_sum / self.val_split
         dve_loss = (mean_cross_entropy_loss - self.baseline_delta) * log_prob
         self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
