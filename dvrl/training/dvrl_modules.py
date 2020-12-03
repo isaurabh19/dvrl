@@ -27,7 +27,7 @@ class DVRL(pl.LightningModule):
                                         dve_comb_dim=self.hparams.dve_comb_dim,
                                         num_classes=self.hparams.num_classes)
         self.prediction_model = prediction_model
-        self.val_dataloader = val_dataloader
+        self.validation_dataloader = val_dataloader
         self.baseline_delta = 0.0
         self.val_split = val_split
 
@@ -62,10 +62,9 @@ class DVRL(pl.LightningModule):
                 estimated_dv + self.hparams.epsilon))
 
         cross_entropy_loss_sum = 0.0
-        for val_batch in self.val_dataloader:
+        for val_batch in self.validation_dataloader:
             x_val, y_val = val_batch
             cross_entropy_loss_sum += F.cross_entropy(self.prediction_model(x_val), y_val, reduction='sum')
-
         mean_cross_entropy_loss = cross_entropy_loss_sum / self.val_split
         dve_loss = (mean_cross_entropy_loss - self.baseline_delta) * log_prob
         self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
