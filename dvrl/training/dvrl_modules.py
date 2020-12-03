@@ -54,7 +54,8 @@ class DVRL(pl.LightningModule):
             estimated_dv = 0.5 * torch.ones_like(estimated_dv)
             selection_vector = torch.bernoulli(estimated_dv)
 
-        self.prediction_model.dvrl_fit(x, y, selection_vector)
+        # calling detach here since we don't want to track gradients of ops in prediction model wrt to dve
+        self.prediction_model.dvrl_fit(x.detach(), y.detach(), selection_vector.detach())
 
         log_prob = torch.sum(
             selection_vector * torch.log(estimated_dv + self.hparams.epsilon) + (1 - selection_vector) * torch.log(

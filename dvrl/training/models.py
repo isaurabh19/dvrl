@@ -18,6 +18,7 @@ class DVRLPredictionModel(pl.LightningModule):
         self.activation_fn = self.hparams.activation_fn
         self.encoder_model = models.resnet18(pretrained=True)
         self.input_layer = nn.Linear(1000, self.hparams.pred_hidden_dim)
+        self.optimizer = Adam(self.parameters(), lr=self.hparams.predictor_lr)
 
     def forward(self, x_in):
         # inference should just call forward pass on the model
@@ -27,15 +28,12 @@ class DVRLPredictionModel(pl.LightningModule):
             x_in = self.activation_fn(layer(x_in))
         return self.output_layer(x_in)
 
-    def configure_optimizers(self):
-        return Adam(self.parameters(), lr=self.hparams.predictor_lr)
-
     def dvrl_fit(self, x, y, selection_vector):
         # not sure if this should be in training step or a custom method like this, will need to think about it.
         dataset = TensorDataset(x, y, selection_vector)
-        dataloader = DataLoader(dataset=dataset, batch_size=self.hparams.inner_batch_size, pin_memory=True)
+        dataloader = DataLoader(dataset=dataset, batch_size=self.hparams.inner_batch_size, pin_memory=False)
 
-        optimizer = self.optimizers()
+        optimizer = self.optimizer
 
         for inner_iteration in range(self.hparams.num_inner_iterations):
             # should ideally pick a random sample of size dataloader batch size, TODO
