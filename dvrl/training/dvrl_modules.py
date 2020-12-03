@@ -64,9 +64,10 @@ class DVRL(pl.LightningModule):
         cross_entropy_loss_sum = 0.0
         for val_batch in self.validation_dataloader:
             x_val, y_val = val_batch
-            cross_entropy_loss_sum += F.cross_entropy(self.prediction_model(x_val), y_val, reduction='sum')
+            cross_entropy_loss_sum += F.cross_entropy(self.prediction_model(x_val.cuda()), y_val.cuda(), reduction='sum')
         mean_cross_entropy_loss = cross_entropy_loss_sum / self.val_split
         dve_loss = (mean_cross_entropy_loss - self.baseline_delta) * log_prob
         self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
                               mean_cross_entropy_loss / self.hparams.T
+        self.print("One pass")
         return dve_loss
