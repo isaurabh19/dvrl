@@ -11,8 +11,9 @@ class DVRLPredictionModel(pl.LightningModule):
     def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
-        self.hidden_layers = [nn.Linear(self.hparams.pred_hidden_dim, self.hparams.pred_hidden_dim) for _ in
-                              range(self.hparams.pred_num_layers - 1)]
+        self.hidden_layers = nn.ModuleList(
+            [nn.Linear(self.hparams.pred_hidden_dim, self.hparams.pred_hidden_dim) for _ in
+             range(self.hparams.pred_num_layers - 1)])
         self.output_layer = nn.Linear(self.hparams.pred_hidden_dim, self.hparams.num_classes)
         self.activation_fn = self.hparams.activation_fn
         self.encoder_model = models.resnet18(pretrained=True)
@@ -51,21 +52,23 @@ class DVRLPredictionModel(pl.LightningModule):
             optimizer.step()
 
 
-class RLDataValueEstimator(nn.Module):
+class RLDataValueEstimator(pl.LightningModule):
     def __init__(self, dve_hidden_dim: int, dve_num_layers: int, dve_comb_dim: int,
-                 activation_fn=F.relu):
+                 num_classes: int, activation_fn=F.relu):
         super().__init__()
         self.encoder_model = models.resnet18(pretrained=True)
-        self.input_layer = nn.Linear(1000, dve_hidden_dim)
-        self.hidden_layers = [nn.Linear(dve_hidden_dim, dve_hidden_dim) for _ in range(dve_num_layers - 3)]
+        self.input_layer = nn.Linear(1000 + num_classes, dve_hidden_dim)
+        self.hidden_layers = nn.ModuleList(
+            [nn.Linear(dve_hidden_dim, dve_hidden_dim) for _ in range(dve_num_layers - 3)])
         self.comb_layer = nn.Linear(dve_hidden_dim, dve_comb_dim)
         self.output_layer = nn.Linear(dve_comb_dim, 1)
         self.activation_fn = activation_fn
+        self.num_classes = num_classes
 
     def forward(self, x_input, y_input):
         # concat x, y as in https://github.com/google-research/google-research/blob/master/dvrl/dvrl.py#L192
         x_input = self.encoder_model(x_input)
-        model_inputs = torch.cat([x_input, y_input], dim=1)
+        model_inputs = torch.cat([x_input, F.one_hot(y_input, num_classes=self.num_classes)], dim=1)
 
         # affine transform input dim to hidden dim
         model_inputs = self.activation_fn(self.input_layer(model_inputs))

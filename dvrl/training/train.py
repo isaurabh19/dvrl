@@ -5,7 +5,7 @@ from dvrl.training.dvrl_modules import DVRL
 from dvrl.training.models import DVRLPredictionModel
 
 
-def run_dvrl(hp_params):
+def run_dvrl(prediction_hparams, dvrl_hparams):
     # DATA
     DATA_PATH = 'data/raw'
     datamodule = CIFAR10DataModuleWithImageNetPreprocessing(DATA_PATH + '/cifar')
@@ -14,10 +14,10 @@ def run_dvrl(hp_params):
     val_dataloader = datamodule.val_dataloader()
     test_dataloader = datamodule.test_dataloader()
 
-    pred_model = DVRLPredictionModel(hp_params)
-    dvrl_model = DVRL(hp_params, pred_model, val_dataloader, datamodule.val_split)
-    trainer = Trainer()
-    trainer.fit(dvrl_model, train_dataloader)
+    pred_model = DVRLPredictionModel(prediction_hparams)
+    dvrl_model = DVRL(dvrl_hparams, pred_model, val_dataloader, datamodule.val_split)
+    trainer = Trainer(gpus=1)
+    trainer.fit(dvrl_model, train_dataloader=train_dataloader, val_dataloaders=test_dataloader)
 
 
 if __name__ == '__main__':
