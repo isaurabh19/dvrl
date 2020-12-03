@@ -21,8 +21,7 @@ class DVRLPredictionModel(pl.LightningModule):
         x_in = self.activation_fn(self.input_layer(x_in))
         for layer in self.hidden_layers:
             x_in = self.activation_fn(layer(x_in))
-        x_in = self.activation_fn(self.output_layer(x_in))
-        return F.softmax(x_in, dim=1)  # TODO Review: dim=1 is correct
+        return self.output_layer(x_in)
 
     def configure_optimizers(self):
         return Adam(self.parameters(), lr=self.hparams.predictor_lr)
