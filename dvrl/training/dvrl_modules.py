@@ -47,27 +47,36 @@ class DVRL(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = batch
         estimated_dv = self(x, y)
+
         selection_vector = torch.bernoulli(estimated_dv)
 
         if torch.sum(selection_vector) == 0:
             # exception when selection probability is 0
-            estimated_dv = 0.5 * torch.ones_like(estimated_dv)
-            selection_vector = torch.bernoulli(estimated_dv)
+            estimated_dv_ = 0.5 * torch.ones_like(estimated_dv)
+            selection_vector = torch.bernoulli(estimated_dv_)
 
         # calling detach here since we don't want to track gradients of ops in prediction model wrt to dve
         self.prediction_model.dvrl_fit(x.detach(), y.detach(), selection_vector.detach())
 
         log_prob = torch.sum(
-            selection_vector * torch.log(estimated_dv + self.hparams.epsilon) + (1 - selection_vector) * torch.log(
-                estimated_dv + self.hparams.epsilon))
+            selection_vector * torch.log(estimated_dv + self.hparams.epsilon) + (1.0 - selection_vector) * torch.log(
+                1.0 - estimated_dv + self.hparams.epsilon))
 
         cross_entropy_loss_sum = 0.0
+        y_acc = []
         for val_batch in self.validation_dataloader:
             x_val, y_val = val_batch
-            cross_entropy_loss_sum += F.cross_entropy(self.prediction_model(x_val.cuda()), y_val.cuda(), reduction='sum')
+            with torch.no_grad():
+                y_hat = self.prediction_model(x_val.cuda()).cpu()
+                y_acc.append((torch.argmax(F.softmax(y_hat, dim=1)) == y_val).float())
+                cross_entropy_loss_sum += F.cross_entropy(y_hat,
+                                                          y_val,
+                                                          reduction='sum')
         mean_cross_entropy_loss = cross_entropy_loss_sum / self.val_split
-        dve_loss = (mean_cross_entropy_loss - self.baseline_delta) * log_prob
+        dve_loss = -(mean_cross_entropy_loss - self.baseline_delta) * log_prob
+        val_accuracy = torch.mean(torch.cat(y_acc))
         self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
                               mean_cross_entropy_loss / self.hparams.T
-        self.print("One pass")
-        return dve_loss
+        self.log('val_accuracy', val_accuracy, prog_bar=True, on_step=True)
+        self.log('estimated_dv_sum', estimated_dv.sum(), prog_bar=True, on_step=True)
+        return {'loss': dve_loss, 'val_accuracy': val_accuracy}
