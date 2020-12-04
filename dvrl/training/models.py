@@ -31,12 +31,12 @@ class DVRLPredictionModel(pl.LightningModule):
         super().__init__()
         self.hparams = hparams
         self.encoder_model = encoder_model
-        self.output_layer = nn.Linear(encoder_out_dim, self.hparams.num_classes)
+        self.mlp = nn.Sequential(nn.Linear(encoder_out_dim, 20), nn.ReLU(), nn.Linear(20, self.hparams.num_classes))
         self.activation_fn = self.hparams.activation_fn
         self.optimizer = Adam(self.parameters(), lr=self.hparams.predictor_lr)
 
     def forward(self, x_in):
-        return self.output_layer(self.activation_fn(self.encoder_model(x_in)))
+        return self.mlp(self.activation_fn(self.encoder_model(x_in)))
 
     def dvrl_fit(self, x, y, selection_vector) -> float:
         self.train()
@@ -71,7 +71,7 @@ class RLDataValueEstimator(pl.LightningModule):
     def __init__(self, encoder_model: nn.Module, num_classes: int, encoder_out_dim: int, activation_fn=F.relu):
         super().__init__()
         self.encoder_model = encoder_model
-        self.output_layer = nn.Linear(encoder_out_dim + num_classes, 1)
+        self.mlp = nn.Sequential(nn.Linear(encoder_out_dim + num_classes, 20), nn.ReLU(), nn.Linear(20, 1))
         self.activation_fn = activation_fn
         self.num_classes = num_classes
 
@@ -79,4 +79,4 @@ class RLDataValueEstimator(pl.LightningModule):
         # concat x, y as in https://github.com/google-research/google-research/blob/master/dvrl/dvrl.py#L192
         x_input = self.encoder_model(x_input)
         model_inputs = torch.cat([x_input, F.one_hot(y_input, num_classes=self.num_classes)], dim=1)
-        return F.sigmoid(self.output_layer(model_inputs))
+        return F.sigmoid(self.mlp(self.activation_fn(model_inputs)))
