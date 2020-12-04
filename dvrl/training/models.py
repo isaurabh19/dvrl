@@ -4,31 +4,39 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.data import TensorDataset, DataLoader
-from torchvision import models
 
 from dvrl.utils.metrics import AccuracyTracker
 
 
+class SimpleConvNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
+        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
+        self.conv2_drop = nn.Dropout2d()
+        self.fc1 = nn.Linear(320, 100)
+        self.fc2 = nn.Linear(100, 50)
+
+    def forward(self, x):
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
+        x = x.view(-1, 320)
+        x = F.relu(self.fc1(x))
+        x = F.dropout(x, training=self.training)
+        return self.fc2(x)
+
+
 class DVRLPredictionModel(pl.LightningModule):
-    def __init__(self, hparams):
+    def __init__(self, hparams, encoder_model: nn.Module, encoder_out_dim: int):
         super().__init__()
         self.hparams = hparams
-        self.hidden_layers = nn.ModuleList(
-            [nn.Linear(self.hparams.pred_hidden_dim, self.hparams.pred_hidden_dim) for _ in
-             range(self.hparams.pred_num_layers - 1)])
-        self.output_layer = nn.Linear(self.hparams.pred_hidden_dim, self.hparams.num_classes)
+        self.encoder_model = encoder_model
+        self.output_layer = nn.Linear(encoder_out_dim, self.hparams.num_classes)
         self.activation_fn = self.hparams.activation_fn
-        self.encoder_model = models.resnet18(pretrained=True)
-        self.input_layer = nn.Linear(1000, self.hparams.pred_hidden_dim)
         self.optimizer = Adam(self.parameters(), lr=self.hparams.predictor_lr)
 
     def forward(self, x_in):
-        # inference should just call forward pass on the model
-        x_in = self.encoder_model(x_in)
-        x_in = self.activation_fn(self.input_layer(x_in))
-        for layer in self.hidden_layers:
-            x_in = self.activation_fn(layer(x_in))
-        return self.output_layer(x_in)
+        return self.output_layer(self.activation_fn(self.encoder_model(x_in)))
 
     def dvrl_fit(self, x, y, selection_vector) -> float:
         self.train()
@@ -60,15 +68,10 @@ class DVRLPredictionModel(pl.LightningModule):
 
 
 class RLDataValueEstimator(pl.LightningModule):
-    def __init__(self, dve_hidden_dim: int, dve_num_layers: int, dve_comb_dim: int,
-                 num_classes: int, activation_fn=F.relu):
+    def __init__(self, encoder_model: nn.Module, num_classes: int, encoder_out_dim: int, activation_fn=F.relu):
         super().__init__()
-        self.encoder_model = models.resnet18(pretrained=True)
-        self.input_layer = nn.Linear(1000 + num_classes, dve_hidden_dim)
-        self.hidden_layers = nn.ModuleList(
-            [nn.Linear(dve_hidden_dim, dve_hidden_dim) for _ in range(dve_num_layers - 3)])
-        self.comb_layer = nn.Linear(dve_hidden_dim, dve_comb_dim)
-        self.output_layer = nn.Linear(dve_comb_dim, 1)
+        self.encoder_model = encoder_model
+        self.output_layer = nn.Linear(encoder_out_dim + num_classes, 1)
         self.activation_fn = activation_fn
         self.num_classes = num_classes
 
@@ -76,17 +79,4 @@ class RLDataValueEstimator(pl.LightningModule):
         # concat x, y as in https://github.com/google-research/google-research/blob/master/dvrl/dvrl.py#L192
         x_input = self.encoder_model(x_input)
         model_inputs = torch.cat([x_input, F.one_hot(y_input, num_classes=self.num_classes)], dim=1)
-
-        # affine transform input dim to hidden dim
-        model_inputs = self.activation_fn(self.input_layer(model_inputs))
-
-        # pass through hidden layers
-        for layer in self.hidden_layers:
-            model_inputs = self.activation_fn(layer(model_inputs))
-
-        # affine transform to dve_comb_dim
-        # Note: At this point, the original TF code concats with y_hat_input which I don't understand fully yet.
-        model_inputs = self.activation_fn(self.comb_layer(model_inputs))
-
-        # project to 1D and squash using sigmoid
         return F.sigmoid(self.output_layer(model_inputs))
