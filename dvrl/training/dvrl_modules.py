@@ -31,6 +31,7 @@ class DVRL(pl.LightningModule):
         self.validation_dataloader = val_dataloader
         self.baseline_delta = 0.0
         self.val_split = val_split
+        self.exploration_threshold = self.hparams.exploration_threshold
 
     def configure_optimizers(self):
         return Adam(self.dve.parameters(), lr=self.hparams.dve_lr)
@@ -63,6 +64,9 @@ class DVRL(pl.LightningModule):
             selection_vector * torch.log(estimated_dv + self.hparams.epsilon) + (1.0 - selection_vector) * torch.log(
                 1.0 - estimated_dv + self.hparams.epsilon))
 
+        exploration_bonus = torch.max(torch.mean(estimated_dv) - self.exploration_threshold, 0) + torch.max(
+            (1 - self.exploration_threshold) - torch.mean(estimated_dv), 0)
+
         cross_entropy_loss_sum = 0.0
 
         accuracy_tracker = AccuracyTracker()
@@ -77,7 +81,7 @@ class DVRL(pl.LightningModule):
                                                           y_val,
                                                           reduction='sum')
         mean_cross_entropy_loss = cross_entropy_loss_sum / self.val_split
-        dve_loss = -(mean_cross_entropy_loss - self.baseline_delta) * log_prob
+        dve_loss = (mean_cross_entropy_loss - self.baseline_delta) * log_prob + 1e3 * exploration_bonus
         val_accuracy = accuracy_tracker.compute()
         self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
                               mean_cross_entropy_loss / self.hparams.T
