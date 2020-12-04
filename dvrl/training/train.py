@@ -34,7 +34,7 @@ def run_cifar_dvrl(prediction_hparams, dvrl_hparams):
     val_split = datamodule.val_split
     encoder_model = models.resnet18(pretrained=True)
     return run_dvrl(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader, test_dataloader, val_split,
-             encoder_model=encoder_model, encoder_out_dim=1000)
+                    encoder_model=encoder_model, encoder_out_dim=1000)
 
 
 def run_fashion_mnist_dvrl(prediction_hparams, dvrl_hparams):
@@ -48,7 +48,7 @@ def run_fashion_mnist_dvrl(prediction_hparams, dvrl_hparams):
     val_split = datamodule.val_split
     encoder_model = SimpleConvNet()
     return run_dvrl(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader, test_dataloader, val_split,
-             encoder_model, encoder_out_dim=50)
+                    encoder_model, encoder_out_dim=50)
 
 
 def run_mnist_dvrl(prediction_hparams, dvrl_hparams):
@@ -62,7 +62,7 @@ def run_mnist_dvrl(prediction_hparams, dvrl_hparams):
     val_split = datamodule.val_split
     encoder_model = SimpleConvNet()
     return run_dvrl(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader, test_dataloader, val_split,
-             encoder_model, encoder_out_dim=50)
+                    encoder_model, encoder_out_dim=50)
 
 
 if __name__ == '__main__':
