@@ -8,7 +8,8 @@ from dvrl.training.models import DVRLPredictionModel
 def run_dvrl(prediction_hparams, dvrl_hparams):
     # DATA
     DATA_PATH = 'data/raw'
-    datamodule = CIFAR10DataModuleWithImageNetPreprocessing(DATA_PATH + '/cifar')
+    datamodule = CIFAR10DataModuleWithImageNetPreprocessing(DATA_PATH + '/cifar',
+                                                            batch_size=dvrl_hparams.get('outer_batch_size', 32))
     datamodule.prepare_data()  # downloads data to given path
     train_dataloader = datamodule.train_dataloader()
     val_dataloader = datamodule.val_dataloader()
