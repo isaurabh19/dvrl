@@ -8,7 +8,8 @@ from dvrl.utils.metrics import AccuracyTracker
 
 
 class DVRL(pl.LightningModule):
-    def __init__(self, hparams, prediction_model: DVRLPredictionModel, val_dataloader, val_split):
+    def __init__(self, hparams, dve_model: RLDataValueEstimator, prediction_model: DVRLPredictionModel, val_dataloader,
+                 val_split):
         """
         Implements the DVRL framework.
         :param hparams: this should be a dict, NameSpace or OmegaConf object that implements hyperparameter-storage
@@ -23,14 +24,12 @@ class DVRL(pl.LightningModule):
         # https://pytorch-lightning.readthedocs.io/en/latest/hyperparameters.html#lightningmodule-hyperparameters
 
         self.hparams = hparams
-        self.dve = RLDataValueEstimator(dve_hidden_dim=self.hparams.dve_hidden_dim,
-                                        dve_num_layers=self.hparams.dve_num_layers,
-                                        dve_comb_dim=self.hparams.dve_comb_dim,
-                                        num_classes=self.hparams.num_classes)
+        self.dve = dve_model
         self.prediction_model = prediction_model
         self.validation_dataloader = val_dataloader
         self.baseline_delta = 0.0
         self.val_split = val_split
+        self.exploration_threshold = self.hparams.exploration_threshold
 
     def configure_optimizers(self):
         return Adam(self.dve.parameters(), lr=self.hparams.dve_lr)
@@ -63,6 +62,9 @@ class DVRL(pl.LightningModule):
             selection_vector * torch.log(estimated_dv + self.hparams.epsilon) + (1.0 - selection_vector) * torch.log(
                 1.0 - estimated_dv + self.hparams.epsilon))
 
+        exploration_bonus = max(torch.mean(estimated_dv.squeeze()) - self.exploration_threshold, 0) + max(
+            (1 - self.exploration_threshold) - torch.mean(estimated_dv.squeeze()), 0)
+
         cross_entropy_loss_sum = 0.0
 
         accuracy_tracker = AccuracyTracker()
@@ -77,7 +79,7 @@ class DVRL(pl.LightningModule):
                                                           y_val,
                                                           reduction='sum')
         mean_cross_entropy_loss = cross_entropy_loss_sum / self.val_split
-        dve_loss = (mean_cross_entropy_loss - self.baseline_delta) * log_prob
+        dve_loss = (mean_cross_entropy_loss - self.baseline_delta) * log_prob + 1.e3 * exploration_bonus
         val_accuracy = accuracy_tracker.compute()
         self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
                               mean_cross_entropy_loss / self.hparams.T
