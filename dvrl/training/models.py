@@ -29,6 +29,7 @@ class DVRLPredictionModel(pl.LightningModule):
         return self.output_layer(x_in)
 
     def dvrl_fit(self, x, y, selection_vector):
+        self.train()
         # not sure if this should be in training step or a custom method like this, will need to think about it.
         dataset = TensorDataset(x, y, selection_vector)
         dataloader = DataLoader(dataset=dataset, batch_size=self.hparams.inner_batch_size, pin_memory=False)
@@ -41,12 +42,11 @@ class DVRLPredictionModel(pl.LightningModule):
 
             optimizer.zero_grad()
 
-            outputs = self(x)
-            loss = F.cross_entropy(outputs, y, reduction='none')
+            outputs = self(x_pred_in)
+            loss = F.cross_entropy(outputs, y_pred_in, reduction='none')
             # we ask for unreduced cross-entropy so that we can multiply it with s_pred_in and then reduce
-            loss = loss * s_pred_in
+            loss = loss * s_pred_in.squeeze()
             loss.mean().backward()
-
             optimizer.step()
 
 

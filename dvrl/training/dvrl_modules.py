@@ -67,8 +67,9 @@ class DVRL(pl.LightningModule):
         for val_batch in self.validation_dataloader:
             x_val, y_val = val_batch
             with torch.no_grad():
+                self.prediction_model.eval()
                 y_hat = self.prediction_model(x_val.cuda()).cpu()
-                y_acc.append((torch.argmax(F.softmax(y_hat, dim=1)) == y_val).float())
+                y_acc.append((torch.argmax(F.softmax(y_hat, dim=1), dim=1) == y_val).float())
                 cross_entropy_loss_sum += F.cross_entropy(y_hat,
                                                           y_val,
                                                           reduction='sum')
