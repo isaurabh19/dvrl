@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch.optim import Adam
 
 from dvrl.training.models import RLDataValueEstimator, DVRLPredictionModel
+from dvrl.utils.metrics import AccuracyTracker
 
 
 class DVRL(pl.LightningModule):
@@ -56,28 +57,31 @@ class DVRL(pl.LightningModule):
             selection_vector = torch.bernoulli(estimated_dv_)
 
         # calling detach here since we don't want to track gradients of ops in prediction model wrt to dve
-        self.prediction_model.dvrl_fit(x.detach(), y.detach(), selection_vector.detach())
+        training_accuracy = self.prediction_model.dvrl_fit(x.detach(), y.detach(), selection_vector.detach())
 
         log_prob = torch.sum(
             selection_vector * torch.log(estimated_dv + self.hparams.epsilon) + (1.0 - selection_vector) * torch.log(
                 1.0 - estimated_dv + self.hparams.epsilon))
 
         cross_entropy_loss_sum = 0.0
-        y_acc = []
+
+        accuracy_tracker = AccuracyTracker()
+
         for val_batch in self.validation_dataloader:
             x_val, y_val = val_batch
             with torch.no_grad():
                 self.prediction_model.eval()
-                y_hat = self.prediction_model(x_val.cuda()).cpu()
-                y_acc.append((torch.argmax(F.softmax(y_hat, dim=1), dim=1) == y_val).float())
-                cross_entropy_loss_sum += F.cross_entropy(y_hat,
+                logits = self.prediction_model(x_val.cuda()).cpu()
+                accuracy_tracker.track(y_val, logits)
+                cross_entropy_loss_sum += F.cross_entropy(logits,
                                                           y_val,
                                                           reduction='sum')
         mean_cross_entropy_loss = cross_entropy_loss_sum / self.val_split
         dve_loss = -(mean_cross_entropy_loss - self.baseline_delta) * log_prob
-        val_accuracy = torch.mean(torch.cat(y_acc))
+        val_accuracy = accuracy_tracker.compute()
         self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
                               mean_cross_entropy_loss / self.hparams.T
         self.log('val_accuracy', val_accuracy, prog_bar=True, on_step=True)
+        self.log('training_accuracy', training_accuracy, prog_bar=True, on_step=True)
         self.log('estimated_dv_sum', estimated_dv.sum(), prog_bar=True, on_step=True)
         return {'loss': dve_loss, 'val_accuracy': val_accuracy}
