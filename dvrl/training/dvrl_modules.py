@@ -77,7 +77,7 @@ class DVRL(pl.LightningModule):
                                                           y_val,
                                                           reduction='sum')
         mean_cross_entropy_loss = cross_entropy_loss_sum / self.val_split
-        dve_loss = -(mean_cross_entropy_loss - self.baseline_delta) * log_prob
+        dve_loss = (mean_cross_entropy_loss - self.baseline_delta) * log_prob
         val_accuracy = accuracy_tracker.compute()
         self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
                               mean_cross_entropy_loss / self.hparams.T
