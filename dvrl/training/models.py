@@ -6,6 +6,8 @@ from torch.optim import Adam
 from torch.utils.data import TensorDataset, DataLoader
 from torchvision import models
 
+from dvrl.utils.metrics import AccuracyTracker
+
 
 class DVRLPredictionModel(pl.LightningModule):
     def __init__(self, hparams):
@@ -29,13 +31,15 @@ class DVRLPredictionModel(pl.LightningModule):
         #     x_in = self.activation_fn(layer(x_in))
         # return self.output_layer(x_in)
 
-    def dvrl_fit(self, x, y, selection_vector):
+    def dvrl_fit(self, x, y, selection_vector) -> float:
         self.train()
         # not sure if this should be in training step or a custom method like this, will need to think about it.
         dataset = TensorDataset(x, y, selection_vector)
         dataloader = DataLoader(dataset=dataset, batch_size=self.hparams.inner_batch_size, pin_memory=False)
 
         optimizer = self.optimizer
+
+        accuracy_tracker = AccuracyTracker()
 
         for inner_iteration in range(self.hparams.num_inner_iterations):
             # should ideally pick a random sample of size dataloader batch size, TODO
@@ -48,7 +52,12 @@ class DVRLPredictionModel(pl.LightningModule):
             # we ask for unreduced cross-entropy so that we can multiply it with s_pred_in and then reduce
             loss = loss * s_pred_in.squeeze()
             loss.mean().backward()
+
             optimizer.step()
+
+            accuracy_tracker.track(y_pred_in.detach().cpu(), outputs.detach().cpu())
+
+        return accuracy_tracker.compute()
 
 
 class RLDataValueEstimator(pl.LightningModule):
