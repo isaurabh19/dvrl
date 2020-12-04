@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from torch.optim import Adam
 
 from dvrl.training.models import RLDataValueEstimator, DVRLPredictionModel
-from dvrl.utils.metrics import AccuracyTracker
 
 
 class DVRL(pl.LightningModule):
@@ -67,14 +66,14 @@ class DVRL(pl.LightningModule):
 
         cross_entropy_loss_sum = 0.0
 
-        accuracy_tracker = AccuracyTracker()
+        accuracy_tracker = pl.metrics.Accuracy()
 
         for val_batch in self.validation_dataloader:
             x_val, y_val = val_batch
             with torch.no_grad():
                 self.prediction_model.eval()
                 logits = self.prediction_model(x_val.cuda()).cpu()
-                accuracy_tracker.track(y_val, logits)
+                accuracy_tracker(logits.detach().cpu(), y_val.detach().cpu())
                 cross_entropy_loss_sum += F.cross_entropy(logits,
                                                           y_val,
                                                           reduction='sum')

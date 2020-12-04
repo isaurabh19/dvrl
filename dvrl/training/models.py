@@ -1,11 +1,11 @@
+from typing import List, Any
+
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.data import TensorDataset, DataLoader
-
-from dvrl.utils.metrics import AccuracyTracker
 
 
 class SimpleConvNet(nn.Module):
@@ -33,12 +33,52 @@ class DVRLPredictionModel(pl.LightningModule):
         self.encoder_model = encoder_model
         self.mlp = nn.Sequential(nn.Linear(encoder_out_dim, 20), nn.ReLU(), nn.Linear(20, self.hparams.num_classes))
         self.activation_fn = self.hparams.activation_fn
-        self.optimizer = Adam(self.parameters(), lr=self.hparams.predictor_lr)
+        self.train_acc = pl.metrics.Accuracy()
+        self.valid_acc = pl.metrics.Accuracy()
+        self.test_acc = pl.metrics.Accuracy()
+        self.optimizer = None
+
+    def configure_optimizers(self):
+        return Adam(self.parameters(), lr=self.hparams.predictor_lr)
 
     def forward(self, x_in):
         return self.mlp(self.activation_fn(self.encoder_model(x_in)))
 
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self(x)
+        loss = F.cross_entropy(logits, y)
+        self.log('train_acc_step', self.train_acc(logits, y))
+        self.log('predictor_loss', loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self(x)
+        loss = F.cross_entropy(logits, y)
+        self.log('val_acc_step', self.valid_acc(logits, y))
+        self.log('val_loss', loss)
+
+    def training_epoch_end(self, outputs: List[Any]) -> None:
+        self.log('train_acc_full', self.train_acc.compute())
+
+    def validation_epoch_end(self, outputs: List[Any]) -> None:
+        self.log('val_acc_full', self.valid_acc.compute())
+
+    def test_epoch_end(self, outputs: List[Any]) -> None:
+        self.log('test_acc_full', self.test_acc.compute())
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self(x)
+        loss = F.cross_entropy(logits, y)
+        self.log('test_acc_step', self.test_acc(logits, y))
+        self.log('test_loss', loss)
+
     def dvrl_fit(self, x, y, selection_vector) -> float:
+        if self.optimizer is None:
+            self.optimizer = self.configure_optimizers()
+
         self.train()
         # not sure if this should be in training step or a custom method like this, will need to think about it.
         dataset = TensorDataset(x, y, selection_vector)
@@ -46,7 +86,7 @@ class DVRLPredictionModel(pl.LightningModule):
 
         optimizer = self.optimizer
 
-        accuracy_tracker = AccuracyTracker()
+        accuracy_tracker = pl.metrics.Accuracy()
 
         for inner_iteration in range(self.hparams.num_inner_iterations):
             # should ideally pick a random sample of size dataloader batch size, TODO
@@ -62,7 +102,8 @@ class DVRLPredictionModel(pl.LightningModule):
 
             optimizer.step()
 
-            accuracy_tracker.track(y_pred_in.detach().cpu(), outputs.detach().cpu())
+            # accuracy_tracker.track(y_pred_in.detach().cpu(), outputs.detach().cpu())
+            accuracy_tracker(outputs.detach().cpu(), y_pred_in.detach().cpu())
 
         return accuracy_tracker.compute()
 
