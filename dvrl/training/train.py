@@ -4,7 +4,6 @@ from pl_bolts.datamodules.fashion_mnist_datamodule import FashionMNISTDataModule
 from pl_bolts.datamodules.mnist_datamodule import MNISTDataModule
 from pytorch_lightning import Trainer
 from torchvision import models
-
 from dvrl.data.make_dataset import CIFAR10DataModuleWithImageNetPreprocessing
 from dvrl.training.dvrl_modules import DVRL
 from dvrl.training.models import DVRLPredictionModel, RLDataValueEstimator, SimpleConvNet
@@ -61,8 +60,8 @@ def run_mnist_dvrl(prediction_hparams, dvrl_hparams):
 
     val_split = datamodule.val_split
     encoder_model = SimpleConvNet()
-    run_dvrl(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader, test_dataloader, val_split,
-             encoder_model, encoder_out_dim=50)
+    return run_dvrl(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader, test_dataloader, val_split,
+                    encoder_model, encoder_out_dim=50)
 
 
 if __name__ == '__main__':
