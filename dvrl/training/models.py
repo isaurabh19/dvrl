@@ -17,16 +17,17 @@ class DVRLPredictionModel(pl.LightningModule):
         self.output_layer = nn.Linear(self.hparams.pred_hidden_dim, self.hparams.num_classes)
         self.activation_fn = self.hparams.activation_fn
         self.encoder_model = models.resnet18(pretrained=True)
-        self.input_layer = nn.Linear(1000, self.hparams.pred_hidden_dim)
+        self.encoder_model.fc = nn.Linear(512, self.hparams.num_classes)
+        self.input_layer = nn.Linear(512, self.hparams.pred_hidden_dim)
         self.optimizer = Adam(self.parameters(), lr=self.hparams.predictor_lr)
 
     def forward(self, x_in):
         # inference should just call forward pass on the model
-        x_in = self.encoder_model(x_in)
-        x_in = self.activation_fn(self.input_layer(x_in))
-        for layer in self.hidden_layers:
-            x_in = self.activation_fn(layer(x_in))
-        return self.output_layer(x_in)
+        return self.encoder_model(x_in)
+        # x_in = self.activation_fn(self.input_layer(x_in))
+        # for layer in self.hidden_layers:
+        #     x_in = self.activation_fn(layer(x_in))
+        # return self.output_layer(x_in)
 
     def dvrl_fit(self, x, y, selection_vector):
         self.train()
@@ -55,6 +56,7 @@ class RLDataValueEstimator(pl.LightningModule):
                  num_classes: int, activation_fn=F.relu):
         super().__init__()
         self.encoder_model = models.resnet18(pretrained=True)
+        # self.encoder_model.fc = nn.Linear(512, 1000)
         self.input_layer = nn.Linear(1000 + num_classes, dve_hidden_dim)
         self.hidden_layers = nn.ModuleList(
             [nn.Linear(dve_hidden_dim, dve_hidden_dim) for _ in range(dve_num_layers - 3)])
