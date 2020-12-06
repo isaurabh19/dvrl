@@ -66,10 +66,10 @@ class DVRLPredictionModel(pl.LightningModule):
         self.log('val_loss', loss)
 
     def training_epoch_end(self, outputs: List[Any]) -> None:
-        self.log('train_acc_full', self.train_acc.compute())
+        self.log('train_acc_full', self.train_acc.compute(), prog_bar=True)
 
     def validation_epoch_end(self, outputs: List[Any]) -> None:
-        self.log('val_acc_full', self.valid_acc.compute())
+        self.log('val_acc_full', self.valid_acc.compute(), prog_bar=True)
 
     def test_epoch_end(self, outputs: List[Any]) -> None:
         self.log('test_acc_full', self.test_acc.compute())
@@ -122,7 +122,9 @@ class RLDataValueEstimator(pl.LightningModule):
     def __init__(self, encoder_model: nn.Module, num_classes: int, encoder_out_dim: int, activation_fn=F.relu):
         super().__init__()
         self.encoder_model = encoder_model
-        self.mlp = nn.Sequential(nn.Linear(encoder_out_dim + num_classes, 20), nn.ReLU(), nn.Linear(20, 1))
+        self.mlp = nn.Sequential(nn.Linear(encoder_out_dim + num_classes, 20),
+                                 nn.ReLU(), nn.BatchNorm1d(20),
+                                 nn.Linear(20, 1))
         self.activation_fn = activation_fn
         self.num_classes = num_classes
 

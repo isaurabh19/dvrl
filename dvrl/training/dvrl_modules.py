@@ -61,7 +61,7 @@ class DVRL(pl.LightningModule):
         # calling detach here since we don't want to track gradients of ops in prediction model wrt to dve
         training_accuracy = self.prediction_model.dvrl_fit(x, y, selection_vector)
 
-        log_prob = torch.sum(
+        log_prob = torch.mean(
             selection_vector * torch.log(estimated_dv + self.hparams.epsilon) + (
                         1.0 - selection_vector) * torch.log(
                 1.0 - estimated_dv + self.hparams.epsilon))
@@ -87,7 +87,7 @@ class DVRL(pl.LightningModule):
                                                           reduction='sum')
         mean_cross_entropy_loss = cross_entropy_loss_sum / self.val_split
         val_accuracy = accuracy_tracker.compute()
-        dve_loss = (val_accuracy - 0.98) * log_prob + 1.e3 * exploration_bonus
+        dve_loss = -(val_accuracy - 0.9) * log_prob + 1.e3 * exploration_bonus
         self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
                               mean_cross_entropy_loss / self.hparams.T
         self.log('val_accuracy', val_accuracy, prog_bar=True, on_step=True)
