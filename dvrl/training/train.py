@@ -19,7 +19,8 @@ def run_dvrl(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader,
                                      encoder_out_dim=encoder_out_dim)
     dvrl_model = DVRL(dvrl_hparams, dve_model, pred_model, val_dataloader, val_split)
     trainer = Trainer(gpus=1, max_epochs=10)
-    trainer.fit(dvrl_model, train_dataloader=train_dataloader, val_dataloaders=test_dataloader)
+    trainer.fit(dvrl_model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader)
+    trainer.test(model=pred_model, test_dataloaders=test_dataloader)
     return pred_model, dve_model
 
 

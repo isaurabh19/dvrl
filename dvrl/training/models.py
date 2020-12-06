@@ -33,9 +33,9 @@ class DVRLPredictionModel(pl.LightningModule):
         self.encoder_model = encoder_model
         self.mlp = nn.Sequential(nn.Linear(encoder_out_dim, 20), nn.ReLU(), nn.Linear(20, self.hparams.num_classes))
         self.activation_fn = self.hparams.activation_fn
-        self.train_acc = pl.metrics.Accuracy()
-        self.valid_acc = pl.metrics.Accuracy()
-        self.test_acc = pl.metrics.Accuracy()
+        self.train_acc = pl.metrics.Accuracy(compute_on_step=False)
+        self.valid_acc = pl.metrics.Accuracy(compute_on_step=False)
+        self.test_acc = pl.metrics.Accuracy(compute_on_step=False)
         self.optimizer = None
 
     def configure_optimizers(self):
@@ -45,18 +45,24 @@ class DVRLPredictionModel(pl.LightningModule):
         return self.mlp(self.activation_fn(self.encoder_model(x_in)))
 
     def training_step(self, batch, batch_idx):
-        x, y = batch
+        if len(batch) == 2:
+            x, y = batch
+        else:
+            x, y, is_corrupted = batch
         logits = self(x)
         loss = F.cross_entropy(logits, y)
-        self.log('train_acc_step', self.train_acc(logits, y))
+        self.train_acc(logits, y)
         self.log('predictor_loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y = batch
+        if len(batch) == 2:
+            x, y = batch
+        else:
+            x, y, is_corrupted = batch
         logits = self(x)
         loss = F.cross_entropy(logits, y)
-        self.log('val_acc_step', self.valid_acc(logits, y))
+        self.valid_acc(logits, y)
         self.log('val_loss', loss)
 
     def training_epoch_end(self, outputs: List[Any]) -> None:
@@ -69,10 +75,13 @@ class DVRLPredictionModel(pl.LightningModule):
         self.log('test_acc_full', self.test_acc.compute())
 
     def test_step(self, batch, batch_idx):
-        x, y = batch
+        if len(batch) == 2:
+            x, y = batch
+        else:
+            x, y, is_corrupted = batch
         logits = self(x)
         loss = F.cross_entropy(logits, y)
-        self.log('test_acc_step', self.test_acc(logits, y))
+        self.test_acc(logits, y)
         self.log('test_loss', loss)
 
     def dvrl_fit(self, x, y, selection_vector) -> float:
@@ -82,7 +91,8 @@ class DVRLPredictionModel(pl.LightningModule):
         self.train()
         # not sure if this should be in training step or a custom method like this, will need to think about it.
         dataset = TensorDataset(x, y, selection_vector)
-        dataloader = DataLoader(dataset=dataset, batch_size=self.hparams.inner_batch_size, pin_memory=False)
+        dataloader = DataLoader(dataset=dataset, batch_size=self.hparams.inner_batch_size, pin_memory=False,
+                                shuffle=True)
 
         optimizer = self.optimizer
 
@@ -97,7 +107,7 @@ class DVRLPredictionModel(pl.LightningModule):
             outputs = self(x_pred_in)
             loss = F.cross_entropy(outputs, y_pred_in, reduction='none')
             # we ask for unreduced cross-entropy so that we can multiply it with s_pred_in and then reduce
-            loss = loss * s_pred_in.squeeze()
+            loss = loss * s_pred_in
             loss.mean().backward()
 
             optimizer.step()
@@ -120,4 +130,4 @@ class RLDataValueEstimator(pl.LightningModule):
         # concat x, y as in https://github.com/google-research/google-research/blob/master/dvrl/dvrl.py#L192
         x_input = self.encoder_model(x_input)
         model_inputs = torch.cat([x_input, F.one_hot(y_input, num_classes=self.num_classes)], dim=1)
-        return F.sigmoid(self.mlp(self.activation_fn(model_inputs)))
+        return torch.sigmoid(self.mlp(model_inputs))
