@@ -1,6 +1,9 @@
+import copy
+
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
+from pytorch_lightning import Trainer
 from torch.optim import Adam
 
 from dvrl.training.models import RLDataValueEstimator, DVRLPredictionModel
@@ -30,6 +33,14 @@ class DVRL(pl.LightningModule):
         self.val_split = val_split
         self.exploration_threshold = self.hparams.exploration_threshold
 
+        self.val_model = copy.deepcopy(self.prediction_model)
+        trainer = Trainer(gpus=1, max_epochs=15)
+        trainer.fit(model=self.val_model, train_dataloader=val_dataloader)
+        self.val_model.eval()
+        self.val_model.requires_grad_(False)
+        self.dve.set_val_model(self.val_model)
+        self.validation_performance = None
+
     def configure_optimizers(self):
         return Adam(self.dve.parameters(), lr=self.hparams.dve_lr)
 
@@ -43,7 +54,15 @@ class DVRL(pl.LightningModule):
         # inference should just call forward pass on the model
         return self.dve(x, y)
 
+    def on_train_start(self) -> None:
+        ori_model = copy.deepcopy(self.prediction_model)
+        trainer = Trainer(gpus=1, max_epochs=25)
+        trainer.fit(model=ori_model, train_dataloader=self.train_dataloader(),
+                    val_dataloaders=self.validation_dataloader)
+        self.validation_performance = ori_model.valid_acc.compute()
+
     def training_step(self, batch, batch_idx):
+        is_corrupted = None
         if len(batch) == 2:
             x, y = batch
         else:
@@ -61,9 +80,9 @@ class DVRL(pl.LightningModule):
         # calling detach here since we don't want to track gradients of ops in prediction model wrt to dve
         training_accuracy = self.prediction_model.dvrl_fit(x, y, selection_vector)
 
-        log_prob = torch.mean(
+        log_prob = torch.sum(
             selection_vector * torch.log(estimated_dv + self.hparams.epsilon) + (
-                        1.0 - selection_vector) * torch.log(
+                    1.0 - selection_vector) * torch.log(
                 1.0 - estimated_dv + self.hparams.epsilon))
 
         exploration_bonus = max(torch.mean(estimated_dv.squeeze()) - self.exploration_threshold, 0.0) + max(
@@ -72,6 +91,11 @@ class DVRL(pl.LightningModule):
         cross_entropy_loss_sum = 0.0
 
         accuracy_tracker = pl.metrics.Accuracy(compute_on_step=False)
+
+        if is_corrupted is not None:
+            corruption_tracker = pl.metrics.Accuracy(compute_on_step=True)
+            corruption_tracker(estimated_dv.detach().cpu(), 1.0 - is_corrupted.float().cpu())
+            self.log('corruption_accuracy', corruption_tracker.compute(), prog_bar=True)
 
         for val_batch in self.validation_dataloader:
             if len(val_batch) == 2:
@@ -87,7 +111,7 @@ class DVRL(pl.LightningModule):
                                                           reduction='sum')
         mean_cross_entropy_loss = cross_entropy_loss_sum / self.val_split
         val_accuracy = accuracy_tracker.compute()
-        dve_loss = -(val_accuracy - 0.9) * log_prob + 1.e3 * exploration_bonus
+        dve_loss = -(val_accuracy - self.validation_performance) * log_prob + 1.e3 * exploration_bonus
         self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
                               mean_cross_entropy_loss / self.hparams.T
         self.log('val_accuracy', val_accuracy, prog_bar=True, on_step=True)

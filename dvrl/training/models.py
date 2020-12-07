@@ -122,14 +122,21 @@ class RLDataValueEstimator(pl.LightningModule):
     def __init__(self, encoder_model: nn.Module, num_classes: int, encoder_out_dim: int, activation_fn=F.relu):
         super().__init__()
         self.encoder_model = encoder_model
-        self.mlp = nn.Sequential(nn.Linear(encoder_out_dim + num_classes, 20),
-                                 nn.ReLU(), nn.BatchNorm1d(20),
-                                 nn.Linear(20, 1))
+        self.label_encoder = nn.Sequential(nn.Linear(num_classes, 100), nn.ReLU(), nn.Linear(100, 50))
+        self.pre_cat_mlp = nn.Sequential(nn.Linear(encoder_out_dim + 50, 50), nn.ReLU(), nn.Linear(50, 50), nn.ReLU())
+        self.post_cat_mlp = nn.Sequential(nn.Linear(50 + num_classes, 30), nn.ReLU(), nn.Linear(30, 1))
         self.activation_fn = activation_fn
         self.num_classes = num_classes
+        self.val_model = None
+
+    def set_val_model(self, val_model):
+        self.val_model = val_model
 
     def forward(self, x_input, y_input):
         # concat x, y as in https://github.com/google-research/google-research/blob/master/dvrl/dvrl.py#L192
-        x_input = self.encoder_model(x_input)
-        model_inputs = torch.cat([x_input, F.one_hot(y_input, num_classes=self.num_classes)], dim=1)
-        return torch.sigmoid(self.mlp(model_inputs))
+        encoded_x_input = self.encoder_model(x_input)
+        y_one_hot = F.one_hot(y_input, num_classes=self.num_classes).float()
+        model_inputs = torch.cat([encoded_x_input, self.label_encoder(y_one_hot)], dim=1)
+        pre_cat = self.pre_cat_mlp(model_inputs)
+        cat = torch.cat([pre_cat, torch.abs(self.val_model(x_input) - y_one_hot)], dim=1)
+        return torch.sigmoid(self.post_cat_mlp(cat))

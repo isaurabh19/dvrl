@@ -13,14 +13,15 @@ DATA_PATH = 'data/raw'
 def run_prediction(prediction_hparams, train_dataloader, val_dataloader, test_dataloader, encoder_model,
                    encoder_out_dim):
     pred_model = DVRLPredictionModel(prediction_hparams, copy.deepcopy(encoder_model), encoder_out_dim=encoder_out_dim)
-    trainer = Trainer(gpus=1, max_epochs=25)
+    trainer = Trainer(gpus=1, max_epochs=100)
     trainer.fit(pred_model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader)
     trainer.test(model=pred_model, test_dataloaders=test_dataloader)
     return pred_model
 
 
 def run_cifar_prediction_corrupted(prediction_hparams):
-    datamodule = CorruptedCIFARDataModule(DATA_PATH + '/cifar', noise_ratio=prediction_hparams['noise_ratio'],
+    datamodule = CorruptedCIFARDataModule(DATA_PATH + '/cifar', batch_size=256,
+                                          noise_ratio=prediction_hparams['noise_ratio'],
                                           max_train_data_size=prediction_hparams['max_train_data_size'])
     datamodule.prepare_data()  # downloads data to given path
     train_dataloader = datamodule.train_dataloader()
