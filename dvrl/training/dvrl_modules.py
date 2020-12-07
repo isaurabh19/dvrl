@@ -4,6 +4,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import EarlyStopping
 from torch.optim import Adam
 
 from dvrl.training.models import RLDataValueEstimator, DVRLPredictionModel
@@ -11,6 +12,7 @@ from dvrl.training.models import RLDataValueEstimator, DVRLPredictionModel
 
 class DVRL(pl.LightningModule):
     def __init__(self, hparams, dve_model: RLDataValueEstimator, prediction_model: DVRLPredictionModel, val_dataloader,
+                 test_dataloader,
                  val_split):
         """
         Implements the DVRL framework.
@@ -34,12 +36,15 @@ class DVRL(pl.LightningModule):
         self.exploration_threshold = self.hparams.exploration_threshold
 
         self.val_model = copy.deepcopy(self.prediction_model)
-        trainer = Trainer(gpus=1, max_epochs=15)
+        trainer = Trainer(gpus=1, max_epochs=25, callbacks=[EarlyStopping(monitor='loss')])
         trainer.fit(model=self.val_model, train_dataloader=val_dataloader)
         self.val_model.eval()
         self.val_model.requires_grad_(False)
         self.dve.set_val_model(self.val_model)
         self.validation_performance = None
+
+        self.init_test_dataloader = test_dataloader
+        self.test_acc = pl.metrics.Accuracy(compute_on_step=False)
 
     def configure_optimizers(self):
         return Adam(self.dve.parameters(), lr=self.hparams.dve_lr)
@@ -59,6 +64,7 @@ class DVRL(pl.LightningModule):
         trainer = Trainer(gpus=1, max_epochs=25)
         trainer.fit(model=ori_model, train_dataloader=self.train_dataloader(),
                     val_dataloaders=self.validation_dataloader)
+        trainer.test(ori_model, test_dataloaders=self.init_test_dataloader)
         self.validation_performance = ori_model.valid_acc.compute()
 
     def training_step(self, batch, batch_idx):
@@ -120,4 +126,5 @@ class DVRL(pl.LightningModule):
         self.log('estimated_dv_mean', estimated_dv.mean(), prog_bar=True, on_step=True)
         self.log('estimated_dv_std', estimated_dv.std(), prog_bar=True, on_step=True)
         self.log('exploration_bonus', exploration_bonus, prog_bar=True, on_step=True)
+        self.log('ori_validation_accuracy', self.validation_performance, prog_bar=True, on_step=True)
         return {'loss': dve_loss, 'val_accuracy': val_accuracy}
