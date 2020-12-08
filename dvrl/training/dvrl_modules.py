@@ -61,7 +61,7 @@ class DVRL(pl.LightningModule):
 
     def on_train_start(self) -> None:
         ori_model = copy.deepcopy(self.prediction_model)
-        trainer = Trainer(gpus=1, max_epochs=25)
+        trainer = Trainer(gpus=1, max_epochs=100)
         trainer.fit(model=ori_model, train_dataloader=self.train_dataloader(),
                     val_dataloaders=self.validation_dataloader)
         trainer.test(ori_model, test_dataloaders=self.init_test_dataloader)
