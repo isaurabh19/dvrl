@@ -1,12 +1,12 @@
 import copy
 
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint
 from torchvision import models
 
 from dvrl.data.make_dataset import CorruptedMNISTDataModule, CorruptedFashionMNISTDataModule, CorruptedCIFARDataModule
 from dvrl.training.models import DVRLPredictionModel, SimpleConvNet
 from dvrl.training.train import run_dvrl
+from dvrl.training.train_gumbel import run_gumbel
 
 DATA_PATH = 'data/raw'
 
@@ -46,8 +46,11 @@ def run_cifar_dvrl_corrupted(prediction_hparams, dvrl_hparams):
 
     val_split = datamodule.val_split
     encoder_model = models.resnet18(pretrained=False)
-    return run_dvrl(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader, test_dataloader, val_split,
-                    encoder_model, encoder_out_dim=1000)
+    dvrl_method = dvrl_hparams.get('dve_method', 'dvrl')
+    print(f'using {dvrl_method}')
+    runner = run_gumbel if dvrl_method == 'gumbel' else run_dvrl
+    return runner(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader, test_dataloader, val_split,
+                  encoder_model, encoder_out_dim=1000)
 
 
 def run_fashion_mnist_prediction_corrupted(prediction_hparams):
@@ -77,8 +80,11 @@ def run_fashion_mnist_dvrl_corrupted(prediction_hparams, dvrl_hparams):
 
     val_split = datamodule.val_split
     encoder_model = SimpleConvNet()
-    return run_dvrl(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader, test_dataloader, val_split,
-                    encoder_model, encoder_out_dim=50)
+    dvrl_method = dvrl_hparams.get('dve_method', 'dvrl')
+    print(f'using {dvrl_method}')
+    runner = run_gumbel if dvrl_method == 'gumbel' else run_dvrl
+    return runner(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader, test_dataloader, val_split,
+                  encoder_model, encoder_out_dim=50)
 
 
 def run_mnist_prediction_corrupted(prediction_hparams):
@@ -106,8 +112,11 @@ def run_mnist_dvrl_corrupted(prediction_hparams, dvrl_hparams):
 
     val_split = datamodule.val_split
     encoder_model = SimpleConvNet()
-    return run_dvrl(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader, test_dataloader, val_split,
-                    encoder_model, encoder_out_dim=50)
+    dvrl_method = dvrl_hparams.get('dve_method', 'dvrl')
+    print(f'using {dvrl_method}')
+    runner = run_gumbel if dvrl_method == 'gumbel' else run_dvrl
+    return runner(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader, test_dataloader, val_split,
+                  encoder_model, encoder_out_dim=50)
 
 
 if __name__ == '__main__':

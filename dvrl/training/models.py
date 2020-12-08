@@ -139,4 +139,10 @@ class RLDataValueEstimator(pl.LightningModule):
         model_inputs = torch.cat([encoded_x_input, self.label_encoder(y_one_hot)], dim=1)
         pre_cat = self.pre_cat_mlp(model_inputs)
         cat = torch.cat([pre_cat, torch.abs(self.val_model(x_input) - y_one_hot)], dim=1)
-        return torch.sigmoid(self.post_cat_mlp(cat))
+        return self.post_cat_mlp(cat)
+
+
+class GumbelDataValueEstimator(RLDataValueEstimator):
+    def __init__(self, encoder_model: nn.Module, num_classes: int, encoder_out_dim: int, activation_fn=F.relu):
+        super().__init__(encoder_model, num_classes, encoder_out_dim, activation_fn)
+        self.post_cat_mlp = nn.Sequential(nn.Linear(50 + num_classes, 30), nn.ReLU(), nn.Linear(30, 2))

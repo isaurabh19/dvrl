@@ -7,7 +7,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
 from torch.optim import Adam
 
-from dvrl.training.models import RLDataValueEstimator, DVRLPredictionModel
+from dvrl.training.models import RLDataValueEstimator, DVRLPredictionModel, GumbelDataValueEstimator
 
 
 class DVRL(pl.LightningModule):
@@ -61,7 +61,7 @@ class DVRL(pl.LightningModule):
 
     def on_train_start(self) -> None:
         ori_model = copy.deepcopy(self.prediction_model)
-        trainer = Trainer(gpus=1, max_epochs=75)
+        trainer = Trainer(gpus=1, max_epochs=25)
         trainer.fit(model=ori_model, train_dataloader=self.train_dataloader(),
                     val_dataloaders=self.validation_dataloader)
         trainer.test(ori_model, test_dataloaders=self.init_test_dataloader)
@@ -74,7 +74,7 @@ class DVRL(pl.LightningModule):
         else:
             x, y, is_corrupted = batch
 
-        estimated_dv = self(x, y).squeeze()
+        estimated_dv = torch.sigmoid(self(x, y)).squeeze()
 
         selection_vector = torch.bernoulli(estimated_dv).detach()
 
@@ -134,5 +134,68 @@ class DVRL(pl.LightningModule):
         self.log('estimated_dv_mean', estimated_dv.mean(), prog_bar=True, on_step=True)
         self.log('estimated_dv_std', estimated_dv.std(), prog_bar=True, on_step=True)
         self.log('exploration_bonus', exploration_bonus, prog_bar=True, on_step=True)
+        # self.log('ori_validation_accuracy', self.validation_performance, prog_bar=True, on_step=True)
+        return {'loss': dve_loss, 'val_accuracy': val_accuracy}
+
+
+class GumbelDVRL(DVRL):
+    def __init__(self, hparams, dve_model: GumbelDataValueEstimator, prediction_model: DVRLPredictionModel,
+                 val_dataloader,
+                 test_dataloader, val_split):
+        super().__init__(hparams, dve_model, prediction_model, val_dataloader, test_dataloader, val_split)
+        assert type(dve_model) == GumbelDataValueEstimator
+
+    def training_step(self, batch, batch_idx):
+        is_corrupted = None
+        if len(batch) == 2:
+            x, y = batch
+        else:
+            x, y, is_corrupted = batch
+
+        estimated_dv = self(x, y)
+
+        selection_vector = F.gumbel_softmax(estimated_dv, hard=True)[:, 1]
+
+        exploration_bonus = torch.max(selection_vector.mean() - self.exploration_threshold,
+                                      torch.tensor(0.0, device=selection_vector.device)) + torch.max(
+            (1.0 - self.exploration_threshold) - selection_vector.mean(),
+            torch.tensor(0.0, device=selection_vector.device))
+
+        # calling detach here since we don't want to track gradients of ops in prediction model wrt to dve
+        training_accuracy = self.prediction_model.dvrl_fit(x, y, selection_vector.detach())
+
+        accuracy_tracker = pl.metrics.Accuracy(compute_on_step=False)
+
+        if is_corrupted is not None:
+            with torch.no_grad():
+                self.dve.eval()
+                corrupted_indices = torch.where(is_corrupted)[0]
+                clean_indices = torch.where(~is_corrupted)[0]
+
+                self.log('mean_corrupted_dve', selection_vector.detach()[corrupted_indices].mean(), prog_bar=True)
+                self.log('mean_clean_dve', selection_vector.detach()[clean_indices].mean(), prog_bar=True)
+
+            self.dve.train()
+
+        for val_batch in self.validation_dataloader:
+            if len(val_batch) == 2:
+                x_val, y_val = val_batch
+            else:
+                x_val, y_val, val_corrupted = val_batch
+            with torch.no_grad():
+                self.prediction_model.eval()
+                logits = self.prediction_model(x_val.cuda()).cpu()
+                accuracy_tracker(logits.detach().cpu(), y_val.detach().cpu())
+
+        val_accuracy = accuracy_tracker.compute()
+        advantage = (val_accuracy - self.baseline_delta)
+        dve_loss = (-advantage * selection_vector).mean() + exploration_bonus
+        self.baseline_delta = (self.hparams.T - 1) * self.baseline_delta / self.hparams.T + \
+                              val_accuracy / self.hparams.T
+        self.log('val_accuracy', val_accuracy, prog_bar=True, on_step=True)
+        self.log('training_accuracy', training_accuracy, prog_bar=True, on_step=True)
+        self.log('estimated_dv_sum', selection_vector.detach().sum(), prog_bar=True, on_step=True)
+        self.log('estimated_dv_mean', selection_vector.detach().mean(), prog_bar=True, on_step=True)
+        self.log('estimated_dv_std', selection_vector.detach().std(), prog_bar=True, on_step=True)
         # self.log('ori_validation_accuracy', self.validation_performance, prog_bar=True, on_step=True)
         return {'loss': dve_loss, 'val_accuracy': val_accuracy}
