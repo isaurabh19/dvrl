@@ -1,6 +1,7 @@
 import copy
 
 from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
 from torchvision import models
 
 from dvrl.data.make_dataset import CorruptedMNISTDataModule, CorruptedFashionMNISTDataModule, CorruptedCIFARDataModule
@@ -44,7 +45,7 @@ def run_cifar_dvrl_corrupted(prediction_hparams, dvrl_hparams):
     test_dataloader = datamodule.test_dataloader()
 
     val_split = datamodule.val_split
-    encoder_model = models.resnet18(pretrained=True)
+    encoder_model = models.resnet18(pretrained=False)
     return run_dvrl(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader, test_dataloader, val_split,
                     encoder_model, encoder_out_dim=1000)
 

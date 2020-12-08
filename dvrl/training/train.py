@@ -3,6 +3,7 @@ import copy
 from pl_bolts.datamodules.fashion_mnist_datamodule import FashionMNISTDataModule
 from pl_bolts.datamodules.mnist_datamodule import MNISTDataModule
 from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
 from torchvision import models
 
 from dvrl.data.make_dataset import CIFAR10DataModuleWithImageNetPreprocessing
@@ -18,9 +19,10 @@ def run_dvrl(dvrl_hparams, prediction_hparams, train_dataloader, val_dataloader,
     dve_model = RLDataValueEstimator(copy.deepcopy(encoder_model), num_classes=dvrl_hparams['num_classes'],
                                      encoder_out_dim=encoder_out_dim)
     dvrl_model = DVRL(dvrl_hparams, dve_model, pred_model, val_dataloader, test_dataloader, val_split)
-    trainer = Trainer(gpus=1, max_epochs=500)
+    checkpoint_callback = ModelCheckpoint(monitor='val_accuracy', mode='max')
+    trainer = Trainer(gpus=1, max_epochs=500, callbacks=[checkpoint_callback])
     trainer.fit(dvrl_model, train_dataloader=train_dataloader, val_dataloaders=val_dataloader)
-    trainer.test(model=pred_model, test_dataloaders=test_dataloader)
+    trainer.test(model=pred_model, test_dataloaders=test_dataloader, ckpt_path=checkpoint_callback.best_model_path)
     return pred_model, dve_model
 
 
