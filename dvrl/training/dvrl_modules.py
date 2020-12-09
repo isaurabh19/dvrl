@@ -106,8 +106,10 @@ class DVRL(pl.LightningModule):
                 corrupted_indices = torch.where(is_corrupted)[0]
                 clean_indices = torch.where(~is_corrupted)[0]
 
-                self.log('mean_corrupted_dve', self(x[corrupted_indices], y[corrupted_indices]).mean(), prog_bar=True)
-                self.log('mean_clean_dve', self(x[clean_indices], y[clean_indices]).mean(), prog_bar=True)
+                self.log('mean_corrupted_dve', torch.sigmoid(self(x[corrupted_indices], y[corrupted_indices])).mean(),
+                         prog_bar=True)
+                self.log('mean_clean_dve', torch.sigmoid(self(x[clean_indices], y[clean_indices])).mean(),
+                         prog_bar=True)
 
             self.dve.train()
 
